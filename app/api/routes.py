@@ -38,6 +38,11 @@ async def health_check():
         scoring_weights=settings.SCORING_WEIGHTS
     )
 
+@router.get("/health")
+async def health():
+    """Fast health check without heavy operations"""
+    return {"status": "ok"}
+
 @router.post("/api/register", response_model=ParticipantResponse)
 async def register_participant(participant: ParticipantRegistration):
     """Register new participant"""
