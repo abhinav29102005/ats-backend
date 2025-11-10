@@ -1,7 +1,7 @@
 """
 PDF text extraction utilities
 """
-import pymupdf
+import fitz
 import logging
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ def extract_text_from_pdf(pdf_content: bytes) -> str:
         Exception: If PDF extraction fails
     """
     try:
-        doc = pymupdf.open(stream=pdf_content, filetype="pdf")
+        doc = fitz.open(stream=pdf_content, filetype="pdf")
         text = "".join([page.get_text() + "\n" for page in doc])
         doc.close()
         

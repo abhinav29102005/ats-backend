@@ -1,0 +1,1 @@
+web: pip install -r requirements.txt && python -m spacy download en_core_web_sm && gunicorn app.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 120 --preload
