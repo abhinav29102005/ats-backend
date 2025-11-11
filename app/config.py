@@ -1,31 +1,22 @@
-"""
-Configuration management for the application
-"""
+"""Configuration"""
 import os
 from dotenv import load_dotenv
-from typing import Optional
 
 load_dotenv()
 
 class Settings:
-    """Application settings"""
+    APP_NAME = "MLSC Perfect CV Match 2025"
+    VERSION = "2.0.0"
+    ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+    PORT = int(os.getenv("PORT", 8000))
     
-    # Application
-    APP_NAME: str = "MLSC Perfect CV Match 2025"
-    VERSION: str = "2.0.0"
-    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
-    PORT: int = int(os.getenv("PORT", 8000))
+    SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+    SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
     
-    # Supabase
-    SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
-    SUPABASE_KEY: str = os.getenv("SUPABASE_KEY", "")
+    MAX_UPLOADS = int(os.getenv("MAX_UPLOADS", 5))
+    RATE_LIMIT_SECONDS = int(os.getenv("RATE_LIMIT_SECONDS", 30))
+    MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", 20))
     
-    # Competition Settings
-    MAX_UPLOADS: int = int(os.getenv("MAX_UPLOADS", 5))
-    RATE_LIMIT_SECONDS: int = int(os.getenv("RATE_LIMIT_SECONDS", 30))
-    MAX_FILE_SIZE_MB: int = int(os.getenv("MAX_FILE_SIZE_MB", 20))
-    
-    # Scoring Weights
     SCORING_WEIGHTS = {
         'skills_match': 35,
         'experience': 25,
@@ -35,22 +26,14 @@ class Settings:
         'projects': 5
     }
     
-    # CORS
-    CORS_ORIGINS: list = [
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "https://mlsc-tiet.vercel.app"
-    ]
-    
-    # Logging
-    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+    CORS_ORIGINS = ["http://localhost:3000", "http://localhost:5173", "*"]
+    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
     
     @property
-    def MAX_FILE_SIZE_BYTES(self) -> int:
+    def MAX_FILE_SIZE_BYTES(self):
         return self.MAX_FILE_SIZE_MB * 1024 * 1024
     
-    def validate(self) -> bool:
-        """Validate critical settings"""
+    def validate(self):
         if not self.SUPABASE_URL or not self.SUPABASE_KEY:
             raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set")
         return True

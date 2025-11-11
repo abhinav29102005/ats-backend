@@ -1,11 +1,11 @@
 """
-Database schemas and data structures
+Database schemas
 """
 from typing import TypedDict, Optional, List
 from datetime import datetime
 
 class ParticipantDB(TypedDict):
-    """Participant database schema"""
+    """Participant table schema"""
     id: str
     name: str
     email: str
@@ -14,7 +14,7 @@ class ParticipantDB(TypedDict):
     updated_at: datetime
 
 class ApplicationDB(TypedDict):
-    """Application database schema"""
+    """Application table schema"""
     id: str
     participant_id: str
     score: float
@@ -27,7 +27,7 @@ class ApplicationDB(TypedDict):
     created_at: datetime
 
 class ResumeCorpusDB(TypedDict):
-    """Resume corpus database schema"""
+    """Resume corpus table schema"""
     id: str
     participant_id: str
     resume_text: str

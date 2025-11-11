@@ -33,7 +33,7 @@ async def health_check():
         competition=settings.APP_NAME,
         organization="Microsoft Learn Student Chapter @ TIET",
         version=settings.VERSION,
-        nlp_loaded=True,  # Updated from resume_parser
+        nlp_loaded=True,
         database_connected=db.is_connected,
         scoring_weights=settings.SCORING_WEIGHTS
     )
@@ -98,38 +98,47 @@ async def submit_resume(
     resume: UploadFile = File(...)
 ):
     """Submit resume for ATS scoring"""
-    
-    # Check upload limit
-    upload_count = db.get_upload_count(participant_id)
-    if upload_count >= settings.MAX_UPLOADS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Upload limit of {settings.MAX_UPLOADS} reached"
-        )
-    
-    # Rate limiting
-    current_time = time.time()
-    if participant_id in last_submissions:
-        time_since_last = current_time - last_submissions[participant_id]
-        if time_since_last < settings.RATE_LIMIT_SECONDS:
-            wait_time = int(settings.RATE_LIMIT_SECONDS - time_since_last)
-            raise HTTPException(
-                status_code=429,
-                detail=f"Wait {wait_time} seconds before next submission"
-            )
-    
-    # Validate job description
-    is_valid, msg = validate_job_description(job_description)
-    if not is_valid:
-        raise HTTPException(status_code=400, detail=msg)
-    
-    # Read and validate PDF
-    content = await resume.read()
-    is_valid, msg = validate_pdf(content, resume.filename, settings.MAX_FILE_SIZE_BYTES)
-    if not is_valid:
-        raise HTTPException(status_code=400, detail=msg)
-    
     try:
+        # Validate inputs
+        if not participant_id:
+            raise HTTPException(status_code=400, detail="Participant ID required")
+        
+        # Validate job description
+        if not validate_job_description(job_description):
+            raise HTTPException(status_code=400, detail="Job description must be at least 50 characters")
+        
+        # Validate file
+        if not resume.filename.lower().endswith('.pdf'):
+            raise HTTPException(status_code=400, detail="Only PDF files are allowed")
+        
+        if resume.size and resume.size > settings.MAX_FILE_SIZE_BYTES:
+            raise HTTPException(status_code=400, detail=f"File too large. Max size: {settings.MAX_FILE_SIZE_MB}MB")
+        
+        # Check upload limit
+        upload_count = db.get_upload_count(participant_id)
+        if upload_count >= settings.MAX_UPLOADS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Upload limit of {settings.MAX_UPLOADS} reached"
+            )
+        
+        # Rate limiting
+        current_time = time.time()
+        if participant_id in last_submissions:
+            time_since_last = current_time - last_submissions[participant_id]
+            if time_since_last < settings.RATE_LIMIT_SECONDS:
+                wait_time = int(settings.RATE_LIMIT_SECONDS - time_since_last)
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Wait {wait_time} seconds before next submission"
+                )
+        
+        # Read and validate PDF
+        content = await resume.read()
+        is_valid, msg = validate_pdf(content, resume.filename, settings.MAX_FILE_SIZE_BYTES)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=msg)
+        
         # Extract text
         text = extract_text_from_pdf(content)
         
@@ -199,17 +208,21 @@ async def get_participant_scores(participant_id: str):
     try:
         scores_df = db.get_participant_scores(participant_id)
         
-        if scores_df.empty:
+        # Handle empty dataframe
+        if scores_df is None or scores_df.empty:
             return {
                 "scores": [],
-                "best_score": None,
-                "average_score": None,
+                "best_score": 0,
+                "average_score": 0,
                 "total_submissions": 0
             }
         
+        # Convert to dict
         scores_list = scores_df.to_dict('records')
+        
+        # Format dates
         for score in scores_list:
-            if 'created_at' in score:
+            if 'created_at' in score and score['created_at']:
                 score['created_at'] = str(score['created_at'])
         
         return {
@@ -218,9 +231,16 @@ async def get_participant_scores(participant_id: str):
             "average_score": float(scores_df['score'].mean()),
             "total_submissions": len(scores_list)
         }
+        
     except Exception as e:
         logger.error(f"Get scores error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Return empty instead of raising error
+        return {
+            "scores": [],
+            "best_score": 0,
+            "average_score": 0,
+            "total_submissions": 0
+        }
 
 @router.get("/api/participant/{participant_id}/upload-count")
 async def get_upload_count(participant_id: str):
