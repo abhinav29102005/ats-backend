@@ -6,6 +6,7 @@ from app.config import settings
 from app.api.routes import router
 from app.database import db
 from app.core.resume_parser import load_nlp_model
+from app.middleware import APIKeyMiddleware
 
 logging.basicConfig(level=settings.LOG_LEVEL)
 logger = logging.getLogger(__name__)
@@ -25,6 +26,13 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"]
 )
+
+# API Key Middleware - Add security layer
+if settings.ENABLE_API_KEY_AUTH:
+    app.add_middleware(APIKeyMiddleware)
+    logger.info("✅ API Key authentication enabled")
+else:
+    logger.warning("⚠️ API Key authentication disabled")
 
 # Include routes
 app.include_router(router)

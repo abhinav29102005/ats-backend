@@ -29,6 +29,11 @@ class Settings:
     CORS_ORIGINS = ["http://localhost:3000", "http://localhost:5173", "*"]
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
     
+    # API Key Configuration
+    ENABLE_API_KEY_AUTH = os.getenv("ENABLE_API_KEY_AUTH", "true").lower() == "true"
+    MASTER_API_KEY = os.getenv("MASTER_API_KEY", "")
+    API_KEYS = [key.strip() for key in os.getenv("API_KEYS", "").split(",") if key.strip()]
+    
     @property
     def MAX_FILE_SIZE_BYTES(self):
         return self.MAX_FILE_SIZE_MB * 1024 * 1024
