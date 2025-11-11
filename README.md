@@ -2,6 +2,26 @@
 
 Advanced ATS (Applicant Tracking System) Resume Scoring Platform for Microsoft Learn Student Chapter @ TIET.
 
+download requirements.txt by command:
+pip install -r requirements.txt
+
+run backend:
+uvicorn app.main:app --reload
+
+Server: [**http://127.0.0.1:8000**](http://127.0.0.1:8000) | Docs: [**http://127.0.0.1:8000/docs**](http://127.0.0.1:8000/docs)
+
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/` | Health check |
+| POST | `/api/register` | Register participant |
+| POST | `/api/submit` | Submit resume (PDF) |
+| GET | `/api/participant/{id}/scores` | Get all scores |
+| GET | `/api/participant/{id}/upload-count` | Get upload count |
+| GET | `/api/leaderboard` | Top 10 leaderboard |
+| GET | `/api/stats` | Competition statistics |
+
+
 ## 🚀 Features
 
 - **Smart Resume Parsing**: Extract skills, experience, education, and projects
@@ -28,6 +48,4 @@ Advanced ATS (Applicant Tracking System) Resume Scoring Platform for Microsoft L
 - **spaCy**: NLP for resume parsing
 - **Scikit-learn**: TF-IDF and ML algorithms
 - **Railway**: Deployment platform
-
-## 📁 Project Structure
 
