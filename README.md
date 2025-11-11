@@ -9,7 +9,7 @@ run backend:
 uvicorn app.main:app --reload
 
 Server: [**http://127.0.0.1:8000**](http://127.0.0.1:8000) | Docs: [**http://127.0.0.1:8000/docs**](http://127.0.0.1:8000/docs)
-api/base/url:: [**http://127.0.0.1:]
+api/base/url:: [http://127.0.0.1:8000]
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
