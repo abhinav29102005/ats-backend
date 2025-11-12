@@ -13,7 +13,7 @@ class Settings:
     SUPABASE_URL = os.getenv("SUPABASE_URL", "")
     SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
     
-    MAX_UPLOADS = int(os.getenv("MAX_UPLOADS", 5))
+    MAX_UPLOADS = int(os.getenv("MAX_UPLOADS", 10))
     RATE_LIMIT_SECONDS = int(os.getenv("RATE_LIMIT_SECONDS", 30))
     MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", 20))
     

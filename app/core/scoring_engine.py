@@ -1,9 +1,6 @@
 """
-ATS scoring engine - Updated scoring logic
-Skills: 30, Education: 20, Experience: 20, Skills in Projects: 15, 
-Keyword Relevance: 10, Resume Quality: 5
-
-Replace the content of app/core/scoring_engine.py with this code
+ATS Scoring Engine - CloudAlly Systems Fixed JD
+FIXED: Uses hardcoded CloudAlly skill lists (not dynamic extraction)
 """
 import re
 from typing import Dict, List, Tuple
@@ -13,8 +10,77 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# ============================================================
+# FIXED CLOUDALLY SYSTEMS SKILL LISTS (DO NOT MODIFY)
+# ============================================================
+
+# Required Skills (14) - Penalty: -2 per missing skill
+REQUIRED_SKILLS = [
+    'python',
+    'node.js',
+    'nodejs',
+    'typescript',
+    'fastapi',
+    'flask',
+    'postgresql',
+    'postgres',
+    'rest api',
+    'restapi',
+    'docker',
+    'git',
+    'ci/cd',
+    'cicd',
+    'aws',
+    'azure',
+    'microservices',
+    'microservice',
+    'asynchronous',
+    'async',
+    'asynchronous programming',
+]
+
+# Preferred Skills (8) - Penalty: -1 per missing skill
+PREFERRED_SKILLS = [
+    'machine learning',
+    'ml',
+    'mlops',
+    'react',
+    'reactjs',
+    'next.js',
+    'nextjs',
+    'agile',
+    'scrum',
+    'grafana',
+    'prometheus',
+]
+
+# Fixed JD for CloudAlly Systems
+CLOUDALLY_JD = """
+CloudAlly Systems Pvt. Ltd. Cloud & Automation Systems Software Engineer Entry-Mid 0-2 years
+Bengaluru India cloud automation intelligent analytics scalable enterprise platforms AI data pipelines
+real-time automation global clients engineering culture innovation autonomy reliable systems scale
+passionate Software Engineer Cloud Automation division backend development distributed systems
+automating business workflows data-driven engineering design develop deploy scalable microservices
+Python FastAPI Flask Node.js implement optimize maintain RESTful APIs backend logic automation workflows
+work cloud platforms AWS Azure manage CI/CD pipelines monitoring tools deployment infrastructure
+integrate machine learning models production systems basic exposure collaborate frontend developers
+deliver complete maintainable web applications React Next.js ensure system reliability testing
+containerization Docker observability setups Grafana Prometheus contribute code reviews architecture
+discussions documentation best practices strong proficiency Python Node.js TypeScript experience
+FastAPI Flask PostgreSQL REST API design principles knowledge Docker Git CI/CD pipelines GitHub Actions
+Jenkins familiarity AWS ECS Lambda S3 Microsoft Azure deployment workflows understanding microservice
+architecture data-driven systems asynchronous programming problem-solving debugging performance
+optimization skills exposure machine learning pipelines MLOps basic AI model integration knowledge
+React Next.js frontend frameworks prior experience developing contributing open-source projects
+strong documentation habits Agile Scrum practices work real-time data systems large-scale automation
+workloads collaborate interdisciplinary team backend cloud AI engineers opportunity learn deployment
+automation cloud infrastructure production-scale systems supportive environment mentorship upskilling
+sessions quarterly project showcases
+"""
+
+
 def calculate_keyword_relevance(resume_text: str, job_description: str) -> Dict:
-    """Calculate TF-IDF based keyword relevance (10 points)"""
+    """Calculate TF-IDF keyword relevance (10 points)"""
     try:
         vectorizer = TfidfVectorizer(
             max_features=100,
@@ -23,17 +89,17 @@ def calculate_keyword_relevance(resume_text: str, job_description: str) -> Dict:
             min_df=1
         )
         
-        tfidf_matrix = vectorizer.fit_transform([job_description, resume_text])
+        # Use CloudAlly JD instead of provided JD for consistency
+        tfidf_matrix = vectorizer.fit_transform([CLOUDALLY_JD, resume_text])
         similarity = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
         
         jd_keywords = vectorizer.get_feature_names_out()
         resume_lower = resume_text.lower()
-        
         matched_keywords = [kw for kw in jd_keywords if kw in resume_lower]
         match_rate = len(matched_keywords) / len(jd_keywords) if len(jd_keywords) > 0 else 0
         
         combined_score = (similarity * 0.7) + (match_rate * 0.3)
-        final_score = combined_score * 10  # Out of 10 points
+        final_score = combined_score * 10
         
         return {
             'score': min(final_score, 10.0),
@@ -45,280 +111,236 @@ def calculate_keyword_relevance(resume_text: str, job_description: str) -> Dict:
         logger.error(f"Keyword relevance error: {e}")
         return {'score': 0.0, 'similarity': 0.0, 'matched_keywords': [], 'match_rate': 0.0}
 
-def extract_jd_skills(job_description: str) -> Tuple[List[str], List[str]]:
-    """
-    Extract required and preferred skills from job description
-    Returns: (required_skills, preferred_skills)
-    """
-    jd_lower = job_description.lower()
-    
-    # Common technical skills
-    all_skills = [
-        'python', 'java', 'javascript', 'typescript', 'c++', 'c#', 'ruby', 'php',
-        'swift', 'kotlin', 'go', 'rust', 'sql', 'react', 'angular', 'vue',
-        'node.js', 'django', 'flask', 'spring', 'express', 'fastapi',
-        'docker', 'kubernetes', 'aws', 'azure', 'gcp', 'git', 'ci/cd',
-        'jenkins', 'mongodb', 'postgresql', 'mysql', 'redis',
-        'tensorflow', 'pytorch', 'pandas', 'numpy', 'scikit-learn',
-        'machine learning', 'deep learning', 'data science',
-        'html', 'css', 'rest api', 'graphql', 'microservices', 'agile', 'scrum'
-    ]
-    
-    required_skills = []
-    preferred_skills = []
-    
-    # Look for required skills section
-    required_section = re.search(r'(?:required|must have|essential).*?(?:preferred|nice to have|$)', 
-                                 jd_lower, re.DOTALL)
-    if required_section:
-        required_text = required_section.group(0)
-        required_skills = [skill for skill in all_skills if skill in required_text]
-    
-    # Look for preferred skills section
-    preferred_section = re.search(r'(?:preferred|nice to have|desired).*?(?:$)', 
-                                  jd_lower, re.DOTALL)
-    if preferred_section:
-        preferred_text = preferred_section.group(0)
-        preferred_skills = [skill for skill in all_skills if skill in preferred_text]
-    
-    # If no sections found, treat all JD skills as required
-    if not required_skills and not preferred_skills:
-        required_skills = [skill for skill in all_skills if skill in jd_lower]
-    
-    return required_skills, preferred_skills
 
-def validate_projects(projects_section: str, skills: List[str]) -> Tuple[float, List[str], List[str]]:
-    """
-    Validate projects demonstrate claimed skills (15 points)
-    Returns: (score, verified_skills, unverified_skills)
-    """
+def validate_projects(projects_section: str, skills: List[str], required_skills: List[str]) -> Tuple[float, List[str], List[str]]:
+    """Validate projects (15 points)"""
     if not projects_section or not skills:
-        return 0.0, [], skills
+        return 0.0, [], required_skills
     
     projects_lower = projects_section.lower()
     verified_skills = [s for s in skills if s.lower() in projects_lower]
-    unverified_skills = [s for s in skills if s not in verified_skills]
     
     if not skills:
         return 0.0, [], []
     
     verification_rate = len(verified_skills) / len(skills)
-    score = verification_rate * 15  # Out of 15 points
+    score = verification_rate * 15
     
-    return score, verified_skills, unverified_skills
+    resume_skills_lower = [s.lower() for s in skills]
+    verified_skills_lower = [s.lower() for s in verified_skills]
+    
+    unverified_required = [
+        req_skill for req_skill in required_skills
+        if req_skill in resume_skills_lower
+        and req_skill not in verified_skills_lower
+    ]
+    
+    return score, verified_skills, unverified_required
+
 
 def count_resume_pages(text: str) -> int:
-    """
-    Estimate number of pages based on text length
-    Rough estimate: ~500 words per page
-    """
+    """Estimate pages (500 words per page)"""
     word_count = len(text.split())
     pages = max(1, round(word_count / 500))
     return pages
 
-def validate_education(education_section: str, jd_education: str = "") -> Tuple[float, List[str]]:
-    """
-    Validate education section (20 points)
-    CGPA validation: -2 if CGPA > 9.42 (invalid)
-    """
+
+def validate_education(education_section: str) -> Tuple[float, List[str], float]:
+    """Validate education (20 points)"""
     score = 0.0
     penalties = []
+    cgpa_value = 0.0
     
     if not education_section:
-        penalties.append("No education section found (-0 points, no penalty)")
-        return 0.0, penalties
+        penalties.append("No education section found")
+        return 0.0, penalties, 0.0
     
     edu_lower = education_section.lower()
-    jd_lower = jd_education.lower() if jd_education else ""
     
-    # Degree matching (10 points)
-    degrees = ['bachelor', 'b.tech', 'b.e.', 'bsc', 'master', 'm.tech', 'm.sc', 'phd', 'mba']
-    jd_degrees = [d for d in degrees if d in jd_lower]
-    resume_degrees = [d for d in degrees if d in edu_lower]
+    # Degree matching (15 points)
+    cs_degrees = ['computer science', 'software engineering', 'information technology', 'computer engineering']
+    general_degrees = ['bachelor', 'b.tech', 'b.e.', 'bsc', 'b.sc']
     
-    if jd_degrees and resume_degrees:
-        score += 10 if any(jd_deg in resume_degrees for jd_deg in jd_degrees) else 5
-    elif resume_degrees:
+    has_cs_degree = any(deg in edu_lower for deg in cs_degrees)
+    has_bachelor = any(deg in edu_lower for deg in general_degrees)
+    
+    if has_cs_degree and has_bachelor:
+        score += 15
+    elif has_bachelor:
+        score += 10
+    elif any(d in edu_lower for d in ['master', 'm.tech', 'm.sc', 'phd', 'mba']):
         score += 7
+    else:
+        penalties.append("No clear degree found")
     
-    # CGPA validation (10 points with penalty check)
+    # CGPA (5 points)
     cgpa_pattern = r'(?:cgpa|gpa|grade)[:\s]*(\d+\.?\d*)\s*(?:/\s*(\d+\.?\d*))?'
     cgpa_matches = re.findall(cgpa_pattern, edu_lower)
     
-    cgpa_valid = False
     for match in cgpa_matches:
         try:
             cgpa_value = float(match[0])
             max_scale = float(match[1]) if match[1] else 10.0
             
-            # Check if CGPA is greater than 9.42 (invalid)
             if cgpa_value > 9.42 and max_scale == 10.0:
-                penalties.append(f"Invalid CGPA: {cgpa_value}/10.0 (exceeds 9.42) (-2)")
+                penalties.append(f"Invalid CGPA: {cgpa_value}/10.0 (-2)")
                 score -= 2
             elif cgpa_value > max_scale:
                 penalties.append(f"Invalid CGPA: {cgpa_value}/{max_scale} (-2)")
                 score -= 2
-            elif cgpa_value >= max_scale * 0.6:
-                score += 10
-                cgpa_valid = True
+            elif cgpa_value >= max_scale * 0.70:
+                score += 5
         except (ValueError, ZeroDivisionError):
             continue
     
-    if not cgpa_valid and not cgpa_matches:
-        # No CGPA found, no points but no penalty
-        pass
-    
-    return min(max(score, 0.0), 20.0), penalties
+    return min(max(score, 0.0), 20.0), penalties, cgpa_value
+
 
 def assess_resume_quality(text: str) -> Tuple[float, List[str]]:
-    """
-    Assess resume format and quality (5 points)
-    Penalty: -2 per extra page beyond 1 page
-    """
-    score = 5.0  # Start with full points
+    """Assess quality (5 points)"""
+    score = 5.0
     issues = []
     
-    # Page count penalty
     pages = count_resume_pages(text)
     if pages > 1:
         penalty = (pages - 1) * 2
-        issues.append(f"Resume is {pages} pages (-{penalty} for {pages-1} extra page(s))")
+        issues.append(f"Resume is {pages} pages (-{penalty})")
         score -= penalty
     
-    # Word count check (no penalty, just feedback)
-    word_count = len(text.split())
-    if word_count < 200:
-        issues.append("Resume too brief (consider adding more details)")
-    elif word_count > 1500:
-        issues.append("Resume too verbose (consider condensing)")
-    
-    # Essential sections
     required = ['experience', 'education', 'skills']
     text_lower = text.lower()
     missing = [sec for sec in required if sec not in text_lower]
     
     if missing:
-        issues.append(f"Missing section(s): {', '.join(missing)}")
+        issues.append(f"Missing: {', '.join(missing)}")
     
-    # Contact info
     has_email = bool(re.search(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', text))
     has_phone = bool(re.search(r'[\+]?[\d\s\-\(\)]{10,}', text))
     
     if not has_email:
-        issues.append("No email found")
+        issues.append("No email")
     if not has_phone:
-        issues.append("No phone found")
+        issues.append("No phone")
     
     return max(score, 0.0), issues
 
+
 def calculate_ats_score(resume_text: str, job_description: str, parsed_resume: Dict,
-                       jd_education: str = "") -> Dict:
+                       jd_education: str = "", required_skills: List[str] = None,
+                       preferred_skills: List[str] = None) -> Dict:
     """
-    Main ATS scoring function
-    
-    Scoring breakdown:
-    - Skills Match: 30 points
-    - Education: 20 points
-    - Experience: 20 points
-    - Skills in Projects: 15 points
-    - Keyword Relevance: 10 points
-    - Resume Quality: 5 points
-    Total: 100 points
-    
-    Penalties:
-    - Missing preferred skills: -2 per skill
-    - Required skills not used in projects: -2 per skill
-    - Invalid CGPA (>9.42): -2
-    - Missing parameters: 0 points (no penalty, just no points awarded)
-    - Extra pages: -2 per page beyond 1
+    CloudAlly Systems ATS Scoring - FIXED
+    Uses hardcoded skill lists (not dynamic extraction)
     """
+    
+    # Use CloudAlly fixed skills (ignore parameters)
+    req_skills = REQUIRED_SKILLS
+    pref_skills = PREFERRED_SKILLS
+    
     score = 0.0
     feedback = []
     penalties = []
     breakdown = {}
     
-    jd_lower = job_description.lower()
+    resume_skills = parsed_resume.get('skills', [])
+    resume_skills_lower = [s.lower() for s in resume_skills]
     
-    # Extract required and preferred skills from JD
-    required_jd_skills, preferred_jd_skills = extract_jd_skills(job_description)
+    # ========== SKILLS MATCH (30 points) ==========
+    all_jd_skills = list(set(req_skills + pref_skills))  # Remove duplicates
+    matched_skills = []
     
-    # 1. Skills Match (30 points)
-    resume_skills = parsed_resume['skills']
+    for skill in resume_skills:
+        skill_lower = skill.lower()
+        if any(skill_lower == jd_skill or jd_skill in skill_lower or skill_lower in jd_skill 
+               for jd_skill in all_jd_skills):
+            matched_skills.append(skill)
     
-    if resume_skills:
-        # Match resume skills with JD skills
-        all_jd_skills = list(set(required_jd_skills + preferred_jd_skills))
-        matched_skills = [s for s in resume_skills if s.lower() in jd_lower or 
-                         any(s.lower() == jd_skill.lower() for jd_skill in all_jd_skills)]
-        
-        if all_jd_skills:
-            skills_score = (len(matched_skills) / len(all_jd_skills)) * 30
-        else:
-            skills_score = 15.0  # Default if no clear JD skills
-        
-        score += skills_score
-        breakdown['skills_match'] = round(skills_score, 2)
-        feedback.append(f"Matched {len(matched_skills)}/{len(all_jd_skills) if all_jd_skills else len(resume_skills)} skills")
-        
-        # Penalty: Missing preferred skills (-2 each)
-        missing_preferred = [s for s in preferred_jd_skills if s not in [rs.lower() for rs in resume_skills]]
-        if missing_preferred:
-            penalty = len(missing_preferred) * 2
-            penalties.append(f"Missing preferred skills: {', '.join(missing_preferred)} (-{penalty})")
-            score -= penalty
+    if all_jd_skills:
+        skills_score = (len(matched_skills) / len(all_jd_skills)) * 30
     else:
-        breakdown['skills_match'] = 0.0
-        feedback.append("No skills detected")
-        penalties.append("No skills found in resume")
+        skills_score = 0.0
     
-    # 2. Education (20 points)
-    education_score, edu_penalties = validate_education(parsed_resume['education_section'], jd_education)
+    score += skills_score
+    breakdown['skills_match'] = round(skills_score, 2)
+    feedback.append(f"Matched {len(matched_skills)}/{len(all_jd_skills)} skills")
+    
+    # Check missing required (-2 each)
+    missing_required = [
+        skill for skill in req_skills
+        if not any(skill in rs_lower or rs_lower in skill for rs_lower in resume_skills_lower)
+    ]
+    
+    if missing_required:
+        penalty = len(set(missing_required)) * 2  # Remove duplicates
+        penalties.append(f"Missing required: {', '.join(list(set(missing_required))[:5])} (-{penalty})")
+        score -= penalty
+    
+    # Check missing preferred (-1 each)
+    missing_preferred = [
+        skill for skill in pref_skills
+        if not any(skill in rs_lower or rs_lower in skill for rs_lower in resume_skills_lower)
+    ]
+    
+    if missing_preferred:
+        penalty = len(set(missing_preferred)) * 1  # Remove duplicates
+        penalties.append(f"Missing preferred: {', '.join(list(set(missing_preferred))[:5])} (-{penalty})")
+        score -= penalty
+    
+    # ========== EDUCATION (20 points) ==========
+    education_score, edu_penalties, cgpa = validate_education(parsed_resume.get('education_section', ''))
     score += education_score
     breakdown['education'] = round(education_score, 2)
     penalties.extend(edu_penalties)
     
-    # 3. Experience (20 points)
-    exp_match = re.search(r'(\d+)\+?\s*years?', jd_lower)
-    required_exp = int(exp_match.group(1)) if exp_match else 2
+    if education_score >= 15:
+        feedback.append("Education: Excellent")
+    elif education_score >= 10:
+        feedback.append("Education: Good")
     
-    if parsed_resume['experience_years'] > 0:
-        exp_score = 20.0 if parsed_resume['experience_years'] >= required_exp else \
-                    (parsed_resume['experience_years'] / required_exp) * 20
-        score += exp_score
-        breakdown['experience'] = round(exp_score, 2)
-        feedback.append(f"Experience: {parsed_resume['experience_years']} years")
+    # ========== EXPERIENCE (20 points) ==========
+    exp_years = parsed_resume.get('experience_years', 0)
+    
+    if 0 <= exp_years <= 2:
+        exp_score = 20.0
+        feedback.append(f"Experience: {exp_years} years (perfect fit for 0-2 range)")
+    elif 2 < exp_years <= 5:
+        exp_score = 15.0
+        feedback.append(f"Experience: {exp_years} years (slightly overqualified)")
+    elif exp_years > 5:
+        exp_score = 10.0
+        feedback.append(f"Experience: {exp_years} years (overqualified)")
     else:
-        breakdown['experience'] = 0.0
-        feedback.append("No experience found")
-        penalties.append("No experience section found")
+        exp_score = 0.0
+        feedback.append("Experience: None detected")
     
-    # 4. Skills in Projects (15 points)
-    project_score, verified_skills, unverified_skills = validate_projects(
-        parsed_resume['projects_section'],
-        resume_skills
+    score += exp_score
+    breakdown['experience'] = round(exp_score, 2)
+    
+    # ========== PROJECTS (15 points) ==========
+    project_score, verified_skills, unverified_required = validate_projects(
+        parsed_resume.get('projects_section', ''),
+        resume_skills,
+        req_skills
     )
+    
     score += project_score
     breakdown['projects'] = round(project_score, 2)
     
-    # Penalty: Required skills not used in projects (-2 each)
-    required_but_not_in_projects = [s for s in required_jd_skills 
-                                    if s in [rs.lower() for rs in resume_skills] 
-                                    and s not in [vs.lower() for vs in verified_skills]]
-    if required_but_not_in_projects:
-        penalty = len(required_but_not_in_projects) * 2
-        penalties.append(f"Required skills not demonstrated in projects: {', '.join(required_but_not_in_projects)} (-{penalty})")
+    if unverified_required:
+        penalty = len(set(unverified_required)) * 2
+        penalties.append(f"Skills not in projects: {', '.join(list(set(unverified_required))[:3])} (-{penalty})")
         score -= penalty
     
     if verified_skills:
-        feedback.append(f"Skills verified in projects: {len(verified_skills)}/{len(resume_skills)}")
+        feedback.append(f"Skills in projects: {len(verified_skills)}/{len(resume_skills)}")
     
-    # 5. Keyword Relevance (10 points)
-    keyword_result = calculate_keyword_relevance(resume_text, job_description)
+    # ========== KEYWORDS (10 points) ==========
+    keyword_result = calculate_keyword_relevance(resume_text, CLOUDALLY_JD)
     score += keyword_result['score']
     breakdown['keyword_relevance'] = round(keyword_result['score'], 2)
     feedback.append(f"Keyword similarity: {keyword_result['similarity']}%")
     
-    # 6. Resume Quality (5 points)
+    # ========== QUALITY (5 points) ==========
     quality_score, quality_issues = assess_resume_quality(resume_text)
     score += quality_score
     breakdown['resume_quality'] = round(quality_score, 2)
@@ -328,7 +350,7 @@ def calculate_ats_score(resume_text: str, job_description: str, parsed_resume: D
     for skill in resume_skills[:5]:
         count = resume_text.lower().count(skill.lower())
         if count > 15:
-            penalties.append(f"Keyword stuffing: '{skill}' repeated {count} times (-5)")
+            penalties.append(f"Keyword stuffing: '{skill}' ({count} times) (-5)")
             score -= 5
             break
     
@@ -337,7 +359,7 @@ def calculate_ats_score(resume_text: str, job_description: str, parsed_resume: D
     return {
         'score': round(final_score, 2),
         'breakdown': breakdown,
-        'matched_skills': [s for s in resume_skills if s.lower() in jd_lower],
+        'matched_skills': matched_skills,
         'feedback': feedback,
         'penalties': penalties,
         'keyword_similarity': keyword_result['similarity']

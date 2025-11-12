@@ -1,5 +1,6 @@
 """
-Resume parsing and information extraction
+Resume parsing and information extraction - FIXED
+Separates education dates from work experience dates
 """
 import re
 import spacy
@@ -121,6 +122,11 @@ def extract_skills(text: str) -> List[str]:
         'Microservices': r'\bmicroservices\b',
         'Agile': r'\bagile\b',
         'Scrum': r'\bscrum\b',
+        'Asynchronous Programming': r'\b(asynchronous|async)\b',
+        'MLOps': r'\bmlops\b',
+        'Next.js': r'\bnext(\.js)?\b',
+        'Grafana': r'\bgrafana\b',
+        'Prometheus': r'\bprometheus\b',
     }
     
     text_lower = text.lower()
@@ -136,52 +142,95 @@ def extract_skills(text: str) -> List[str]:
     return detected_skills
 
 def extract_experience(text: str) -> float:
-    """Extract years of experience with date intelligence"""
+    """
+    Extract years of WORK experience ONLY (not education years)
+    FIXED: Separates education dates from work experience dates
+    """
     text_lower = text.lower()
     current_year = datetime.now().year
     
-    # Pattern 1: Direct years mention
+    # Pattern 1: Direct years mention (most reliable)
     direct_patterns = [
-        r'(\d+)\+?\s*(?:years?|yrs?)\s+(?:of\s+)?experience',
-        r'experience[:\s]+(\d+)\+?\s*(?:years?|yrs?)',
+        r'(\d+\.?\d*)\+?\s*(?:years?|yrs?)\s+(?:of\s+)?(?:work\s+)?experience',
+        r'(?:work\s+)?experience[:\s]+(\d+\.?\d*)\+?\s*(?:years?|yrs?)',
+        r'(\d+\.?\d*)\s*(?:years?|yrs?)\s+in\s+(?:software|development|engineering)',
     ]
     
     for pattern in direct_patterns:
         matches = re.findall(pattern, text_lower)
         if matches:
-            years = [int(m) for m in matches if 0 < int(m) <= 50]
+            years = [float(m) for m in matches if 0 < float(m) <= 50]
             if years:
                 return float(max(years))
     
-    # Pattern 2: Date ranges
+    # Pattern 2: Extract ONLY from "EXPERIENCE" section
+    # Find experience section boundaries
+    exp_section_match = re.search(
+        r'(?:professional\s+)?(?:work\s+)?experience[:\s]*\n(.*?)(?=\n\s*(?:education|projects|skills|certifications?|$))',
+        text_lower,
+        re.DOTALL | re.IGNORECASE
+    )
+    
+    if not exp_section_match:
+        # Try alternative pattern
+        exp_section_match = re.search(
+            r'experience.*?\n(.*?)(?=education|projects|skills|$)',
+            text_lower,
+            re.DOTALL | re.IGNORECASE
+        )
+    
+    if not exp_section_match:
+        # No clear experience section found
+        return 0.0
+    
+    exp_section_text = exp_section_match.group(1)
+    
+    # Pattern 3: Calculate from date ranges ONLY in experience section
     total_months = 0
-    date_range_pattern = r'((?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{4})\s*[-–—to]\s*((?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{4}|present|current)'
     
-    ranges = re.findall(date_range_pattern, text_lower, re.IGNORECASE)
+    # Month-Year format (June 2023 - Present)
+    date_ranges = re.findall(
+        r'((?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{4})\s*[-–—to]\s*((?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{4}|present|current)',
+        exp_section_text,
+        re.IGNORECASE
+    )
     
-    for start_str, end_str in ranges:
+    for start_str, end_str in date_ranges:
         try:
             start_date = date_parse(start_str, fuzzy=True)
             end_date = datetime.now() if 'present' in end_str or 'current' in end_str else date_parse(end_str, fuzzy=True)
             
-            months_diff = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month)
-            if 0 < months_diff <= 600:
-                total_months += months_diff
+            # Only count if start date is after 2000 and reasonable
+            if start_date.year >= 2000 and start_date <= datetime.now():
+                months_diff = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month)
+                if 0 < months_diff <= 240:  # Max 20 years
+                    total_months += months_diff
         except:
             continue
     
-    # Pattern 3: Year-only ranges
-    year_ranges = re.findall(r'(\d{4})\s*[-–—]\s*(\d{4}|present|current)', text)
-    
-    for start_year, end_year in year_ranges:
-        try:
-            start = int(start_year)
-            end = current_year if 'present' in str(end_year).lower() or 'current' in str(end_year).lower() else int(end_year)
-            
-            if 1980 <= start <= current_year and start <= end <= current_year:
-                total_months += (end - start) * 12
-        except:
-            continue
+    # Pattern 4: Year-only ranges ONLY if no month-year ranges found
+    if not date_ranges:
+        year_ranges = re.findall(r'(\d{4})\s*[-–—]\s*(\d{4}|present|current)', exp_section_text)
+        
+        for start_year, end_year in year_ranges:
+            try:
+                start = int(start_year)
+                end = current_year if 'present' in str(end_year).lower() or 'current' in str(end_year).lower() else int(end_year)
+                
+                # Skip if it's a typical education duration (3-5 years)
+                duration = end - start
+                if duration in [3, 4, 5]:
+                    # Check if it looks like education
+                    context = exp_section_text[max(0, exp_section_text.find(start_year)-100):exp_section_text.find(start_year)+100]
+                    if 'bachelor' in context or 'b.tech' in context or 'degree' in context:
+                        continue
+                
+                if 2000 <= start <= current_year and start <= end <= current_year:
+                    months = (end - start) * 12
+                    if 0 < months <= 240:
+                        total_months += months
+            except:
+                continue
     
     return round(total_months / 12, 1) if total_months > 0 else 0.0
 
