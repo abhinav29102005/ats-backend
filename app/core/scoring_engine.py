@@ -347,13 +347,13 @@ def calculate_ats_score(resume_text: str, job_description: str, parsed_resume: D
     
     if 0 <= exp_years <= 2:
         exp_score = 20.0
-        feedback.append(f"Experience: {exp_years} years (perfect fit for 0-2 range)")
+        feedback.append(f"Experience: {exp_years} years ")
     elif 2 < exp_years <= 5:
         exp_score = 15.0
-        feedback.append(f"Experience: {exp_years} years (slightly overqualified)")
+        feedback.append(f"Experience: {exp_years} years ")
     elif exp_years > 5:
         exp_score = 10.0
-        feedback.append(f"Experience: {exp_years} years (overqualified)")
+        feedback.append(f"Experience: {exp_years} years ")
     else:
         exp_score = 0.0
         feedback.append("Experience: None detected")
