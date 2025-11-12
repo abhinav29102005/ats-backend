@@ -1,5 +1,5 @@
 """
-API route handlers
+API route handlers - Updated with fixed job description
 """
 from fastapi import APIRouter, File, UploadFile, Form, HTTPException
 import time
@@ -15,8 +15,7 @@ from app.database import db
 from app.core.pdf_parser import extract_text_from_pdf, validate_pdf
 from app.core.resume_parser import parse_resume
 from app.core.scoring_engine import calculate_ats_score
-from app.core.plagiarism_checker import check_plagiarism, calculate_plagiarism_penalty
-from app.utils.validators import sanitize_input, validate_email, validate_mobile, validate_job_description
+from app.utils.validators import sanitize_input, validate_mobile
 from app.utils.helpers import generate_uuid, get_verdict
 
 logger = logging.getLogger(__name__)
@@ -24,6 +23,50 @@ router = APIRouter()
 
 # Rate limiting storage
 last_submissions: Dict[str, float] = {}
+
+# Fixed Job Description
+FIXED_JOB_DESCRIPTION = """
+Job Description — Software Engineer (Cloud & Automation Systems)
+Company: CloudAlly Systems Pvt. Ltd.
+Location: Bengaluru, India (Hybrid)
+Experience Level: Entry–Mid (0–2 years)
+CTC: ₹8–12 LPA
+
+About CloudAlly Systems
+CloudAlly Systems is a fast-growing technology company specializing in intelligent automation and cloud-based analytics. We build scalable enterprise platforms that integrate AI, data pipelines, and real-time automation to streamline operations for global clients. Our engineering culture emphasizes innovation, autonomy, and building reliable systems at scale.
+
+Role Overview
+We are looking for a passionate Software Engineer to join our Cloud and Automation division. The ideal candidate will have a strong understanding of backend development, distributed systems, and an interest in automating business workflows through data-driven engineering. The role involves designing APIs, deploying containerized applications, and contributing to ML-powered feature pipelines.
+
+Responsibilities
+* Design, develop, and deploy scalable microservices using Python (FastAPI / Flask) or Node.js.
+* Implement, optimize, and maintain RESTful APIs and backend logic for automation workflows.
+* Work with cloud platforms (AWS / Azure) to manage CI/CD pipelines, monitoring tools, and deployment infrastructure.
+* Integrate machine learning models into production systems (basic exposure preferred, not mandatory).
+* Collaborate with frontend developers to deliver complete, maintainable web applications using React or Next.js.
+* Ensure system reliability through testing, containerization (Docker), and observability setups (Grafana / Prometheus).
+* Contribute to code reviews, architecture discussions, and documentation best practices.
+
+Requirements
+* Strong proficiency in Python, Node.js, or TypeScript.
+* Experience with FastAPI / Flask, PostgreSQL, and REST API design principles.
+* Knowledge of Docker, Git, and CI/CD pipelines (GitHub Actions / Jenkins).
+* Familiarity with AWS (ECS, Lambda, S3) or Microsoft Azure deployment workflows.
+* Understanding of microservice architecture, data-driven systems, and asynchronous programming.
+* Problem-solving mindset with good debugging and performance optimization skills.
+
+Preferred Skills
+* Exposure to machine learning pipelines, MLOps, or basic AI model integration.
+* Knowledge of React, Next.js, or other frontend frameworks.
+* Prior experience in developing or contributing to open-source projects.
+* Strong documentation habits and familiarity with Agile/Scrum practices.
+
+What You'll Gain
+* Work on real-time data systems handling large-scale automation workloads.
+* Collaborate with an interdisciplinary team of backend, cloud, and AI engineers.
+* Opportunity to learn deployment automation, cloud infrastructure, and production-scale systems.
+* Supportive environment with mentorship, upskilling sessions, and quarterly project showcases.
+"""
 
 @router.get("/", response_model=HealthResponse)
 async def health_check():
@@ -42,6 +85,11 @@ async def health_check():
 async def health():
     """Fast health check without heavy operations"""
     return {"status": "ok"}
+
+@router.get("/api/job-description")
+async def get_job_description():
+    """Get the fixed job description"""
+    return {"job_description": FIXED_JOB_DESCRIPTION}
 
 @router.post("/api/register", response_model=ParticipantResponse)
 async def register_participant(participant: ParticipantRegistration):
@@ -93,19 +141,13 @@ async def register_participant(participant: ParticipantRegistration):
 @router.post("/api/submit", response_model=ScoreResponse)
 async def submit_resume(
     participant_id: str = Form(...),
-    job_description: str = Form(...),
-    jd_education: str = Form(""),
     resume: UploadFile = File(...)
 ):
-    """Submit resume for ATS scoring"""
+    """Submit resume for ATS scoring - Uses fixed job description"""
     try:
         # Validate inputs
         if not participant_id:
             raise HTTPException(status_code=400, detail="Participant ID required")
-        
-        # Validate job description
-        if not validate_job_description(job_description):
-            raise HTTPException(status_code=400, detail="Job description must be at least 50 characters")
         
         # Validate file
         if not resume.filename.lower().endswith('.pdf'):
@@ -148,21 +190,8 @@ async def submit_resume(
         # Parse resume
         parsed = parse_resume(text)
         
-        # Get reference corpus
-        reference_corpus = db.get_reference_corpus()
-        
-        # Check plagiarism
-        plagiarism_score, _ = check_plagiarism(text, reference_corpus)
-        
-        # Calculate score
-        result = calculate_ats_score(text, job_description, parsed, jd_education)
-        
-        # Apply plagiarism penalty
-        penalty, penalty_msg = calculate_plagiarism_penalty(plagiarism_score)
-        if penalty > 0:
-            result['penalties'].append(penalty_msg)
-            result['score'] -= penalty
-            result['score'] = max(0, result['score'])
+        # Calculate score using fixed JD
+        result = calculate_ats_score(text, FIXED_JOB_DESCRIPTION, parsed)
         
         # Save to database
         db.save_application({
@@ -171,13 +200,9 @@ async def submit_resume(
             'skills_count': len(parsed['skills']),
             'experience_years': parsed['experience_years'],
             'matched_skills_count': len(result['matched_skills']),
-            'plagiarism_score': plagiarism_score,
             'keyword_similarity': result['keyword_similarity'],
             'resume_quality_score': result['breakdown']['resume_quality']
         })
-        
-        # Save to corpus
-        db.save_to_corpus(participant_id, text)
         
         # Update rate limiting
         last_submissions[participant_id] = current_time
@@ -190,7 +215,6 @@ async def submit_resume(
             experience_years=parsed['experience_years'],
             feedback=result['feedback'],
             penalties=result['penalties'],
-            plagiarism_score=plagiarism_score,
             keyword_similarity=result['keyword_similarity'],
             upload_count=upload_count + 1,
             verdict=get_verdict(result['score'])

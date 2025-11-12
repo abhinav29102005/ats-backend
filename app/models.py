@@ -1,4 +1,4 @@
-"""Pydantic models"""
+"""Pydantic models - Updated without plagiarism"""
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List, Dict
 
@@ -31,7 +31,6 @@ class ScoreResponse(BaseModel):
     experience_years: float
     feedback: List[str]
     penalties: List[str]
-    plagiarism_score: float
     keyword_similarity: float
     upload_count: int
     verdict: str
