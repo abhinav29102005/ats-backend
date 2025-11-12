@@ -1,5 +1,5 @@
 """
-API route handlers - Updated with fixed job description
+API route handlers - Resume only submission (Fixed JD)
 """
 from fastapi import APIRouter, File, UploadFile, Form, HTTPException
 import time
@@ -15,7 +15,8 @@ from app.database import db
 from app.core.pdf_parser import extract_text_from_pdf, validate_pdf
 from app.core.resume_parser import parse_resume
 from app.core.scoring_engine import calculate_ats_score
-from app.utils.validators import sanitize_input, validate_mobile
+from app.core.plagiarism_checker import check_plagiarism, calculate_plagiarism_penalty
+from app.utils.validators import sanitize_input, validate_email, validate_mobile
 from app.utils.helpers import generate_uuid, get_verdict
 
 logger = logging.getLogger(__name__)
@@ -24,49 +25,76 @@ router = APIRouter()
 # Rate limiting storage
 last_submissions: Dict[str, float] = {}
 
-# Fixed Job Description
+# ============================================================
+# FIXED JOB DESCRIPTION - Used for all submissions
+# ============================================================
 FIXED_JOB_DESCRIPTION = """
 Job Description — Software Engineer (Cloud & Automation Systems)
+
 Company: CloudAlly Systems Pvt. Ltd.
 Location: Bengaluru, India (Hybrid)
 Experience Level: Entry–Mid (0–2 years)
 CTC: ₹8–12 LPA
 
 About CloudAlly Systems
-CloudAlly Systems is a fast-growing technology company specializing in intelligent automation and cloud-based analytics. We build scalable enterprise platforms that integrate AI, data pipelines, and real-time automation to streamline operations for global clients. Our engineering culture emphasizes innovation, autonomy, and building reliable systems at scale.
+CloudAlly Systems is a fast-growing technology company specializing in intelligent automation 
+and cloud-based analytics. We build scalable enterprise platforms that integrate AI, data pipelines, 
+and real-time automation to streamline operations for global clients.
 
 Role Overview
-We are looking for a passionate Software Engineer to join our Cloud and Automation division. The ideal candidate will have a strong understanding of backend development, distributed systems, and an interest in automating business workflows through data-driven engineering. The role involves designing APIs, deploying containerized applications, and contributing to ML-powered feature pipelines.
+We are looking for a passionate Software Engineer to join our team and help build next-generation 
+cloud automation systems. This role offers hands-on experience with cutting-edge technologies 
+and the opportunity to work on impactful projects.
 
-Responsibilities
-* Design, develop, and deploy scalable microservices using Python (FastAPI / Flask) or Node.js.
-* Implement, optimize, and maintain RESTful APIs and backend logic for automation workflows.
-* Work with cloud platforms (AWS / Azure) to manage CI/CD pipelines, monitoring tools, and deployment infrastructure.
-* Integrate machine learning models into production systems (basic exposure preferred, not mandatory).
-* Collaborate with frontend developers to deliver complete, maintainable web applications using React or Next.js.
-* Ensure system reliability through testing, containerization (Docker), and observability setups (Grafana / Prometheus).
-* Contribute to code reviews, architecture discussions, and documentation best practices.
+Required Skills (Must Have):
+• Python — Backend development and scripting
+• Node.js — Server-side JavaScript and API development
+• TypeScript — Type-safe application development
+• FastAPI — High-performance REST API frameworks
+• Flask — Lightweight web frameworks
+• PostgreSQL — Relational database management
+• REST API — API design and integration
+• Docker — Containerization and deployment
+• Git — Version control and collaboration
+• CI/CD — Continuous integration and deployment pipelines
+• AWS — Cloud infrastructure (EC2, Lambda, S3, etc.)
+• Azure — Microsoft cloud services
+• Microservices — Distributed system architecture
+• Asynchronous Programming — Event-driven and non-blocking code
 
-Requirements
-* Strong proficiency in Python, Node.js, or TypeScript.
-* Experience with FastAPI / Flask, PostgreSQL, and REST API design principles.
-* Knowledge of Docker, Git, and CI/CD pipelines (GitHub Actions / Jenkins).
-* Familiarity with AWS (ECS, Lambda, S3) or Microsoft Azure deployment workflows.
-* Understanding of microservice architecture, data-driven systems, and asynchronous programming.
-* Problem-solving mindset with good debugging and performance optimization skills.
+Preferred Skills (Good to Have):
+• Machine Learning — ML model development and deployment
+• MLOps — ML pipeline automation
+• React — Frontend development
+• Next.js — Server-side rendering frameworks
+• Agile — Agile development methodologies
+• Scrum — Sprint-based project management
+• Grafana — Monitoring and visualization tools
+• Prometheus — Metrics collection and alerting
 
-Preferred Skills
-* Exposure to machine learning pipelines, MLOps, or basic AI model integration.
-* Knowledge of React, Next.js, or other frontend frameworks.
-* Prior experience in developing or contributing to open-source projects.
-* Strong documentation habits and familiarity with Agile/Scrum practices.
+Education Requirements:
+• Bachelor's degree in Computer Science, Software Engineering, Information Technology, 
+  or related technical field
+• CGPA/Percentage: Minimum 70% or equivalent (7.0/10 CGPA)
 
-What You'll Gain
-* Work on real-time data systems handling large-scale automation workloads.
-* Collaborate with an interdisciplinary team of backend, cloud, and AI engineers.
-* Opportunity to learn deployment automation, cloud infrastructure, and production-scale systems.
-* Supportive environment with mentorship, upskilling sessions, and quarterly project showcases.
+Experience Requirements:
+• 0–2 years of professional software development experience
+• Fresh graduates with strong project portfolios are encouraged to apply
+• Internship experience in relevant technologies is a plus
+
+What We Offer:
+• Competitive salary (₹8–12 LPA)
+• Work on cutting-edge cloud and AI technologies
+• Hybrid work model (flexible remote + office)
+• Learning and growth opportunities
+• Collaborative and innovative work culture
+• Health insurance and benefits
+• Performance bonuses and incentives
 """
+
+FIXED_JD_EDUCATION = "Bachelor's degree in Computer Science, Software Engineering, or related field with minimum 70% (7.0 CGPA)"
+
+# ============================================================
 
 @router.get("/", response_model=HealthResponse)
 async def health_check():
@@ -86,23 +114,18 @@ async def health():
     """Fast health check without heavy operations"""
     return {"status": "ok"}
 
-@router.get("/api/job-description")
-async def get_job_description():
-    """Get the fixed job description"""
-    return {"job_description": FIXED_JOB_DESCRIPTION}
-
 @router.post("/api/register", response_model=ParticipantResponse)
 async def register_participant(participant: ParticipantRegistration):
     """Register new participant"""
-    
+
     # Validate
     if not validate_mobile(participant.mobile):
         raise HTTPException(status_code=400, detail="Invalid mobile number")
-    
+
     try:
         # Check existing
         existing = db.get_participant_by_email(participant.email)
-        
+
         if existing:
             upload_count = db.get_upload_count(existing['id'])
             return ParticipantResponse(
@@ -113,7 +136,7 @@ async def register_participant(participant: ParticipantRegistration):
                 upload_count=upload_count,
                 message="Welcome back! Already registered."
             )
-        
+
         # Register new
         participant_id = generate_uuid()
         data = {
@@ -122,9 +145,9 @@ async def register_participant(participant: ParticipantRegistration):
             'email': sanitize_input(participant.email, 200).lower(),
             'mobile': sanitize_input(participant.mobile, 20)
         }
-        
+
         db.register_participant(data)
-        
+
         return ParticipantResponse(
             id=participant_id,
             name=participant.name,
@@ -133,7 +156,7 @@ async def register_participant(participant: ParticipantRegistration):
             upload_count=0,
             message="Registration successful!"
         )
-        
+
     except Exception as e:
         logger.error(f"Registration error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -143,7 +166,12 @@ async def submit_resume(
     participant_id: str = Form(...),
     resume: UploadFile = File(...)
 ):
-    """Submit resume for ATS scoring - Uses fixed job description"""
+    """
+    Submit resume for ATS scoring
+    
+    NOTE: This endpoint uses a FIXED job description.
+    Participants only need to upload their resume PDF.
+    """
     try:
         # Validate inputs
         if not participant_id:
@@ -183,16 +211,30 @@ async def submit_resume(
         
         # Extract text
         text = extract_text_from_pdf(content)
-        
+
         if len(text.strip()) < 100:
             raise HTTPException(status_code=400, detail="Resume text too short")
-        
+
         # Parse resume
         parsed = parse_resume(text)
-        
-        # Calculate score using fixed JD
-        result = calculate_ats_score(text, FIXED_JOB_DESCRIPTION, parsed)
-        
+
+        # Get reference corpus
+        reference_corpus = db.get_reference_corpus()
+
+        # Check plagiarism
+        plagiarism_score, _ = check_plagiarism(text, reference_corpus)
+
+        # Calculate score using FIXED job description
+        logger.info(f"Using fixed JD for scoring participant {participant_id}")
+        result = calculate_ats_score(text, FIXED_JOB_DESCRIPTION, parsed, FIXED_JD_EDUCATION)
+
+        # Apply plagiarism penalty
+        penalty, penalty_msg = calculate_plagiarism_penalty(plagiarism_score)
+        if penalty > 0:
+            result['penalties'].append(penalty_msg)
+            result['score'] -= penalty
+            result['score'] = max(0, result['score'])
+
         # Save to database
         db.save_application({
             'participant_id': participant_id,
@@ -200,13 +242,17 @@ async def submit_resume(
             'skills_count': len(parsed['skills']),
             'experience_years': parsed['experience_years'],
             'matched_skills_count': len(result['matched_skills']),
+            'plagiarism_score': plagiarism_score,
             'keyword_similarity': result['keyword_similarity'],
             'resume_quality_score': result['breakdown']['resume_quality']
         })
-        
+
+        # Save to corpus
+        db.save_to_corpus(participant_id, text)
+
         # Update rate limiting
         last_submissions[participant_id] = current_time
-        
+
         return ScoreResponse(
             score=result['score'],
             breakdown=ScoreBreakdown(**result['breakdown']),
@@ -215,11 +261,12 @@ async def submit_resume(
             experience_years=parsed['experience_years'],
             feedback=result['feedback'],
             penalties=result['penalties'],
+            plagiarism_score=plagiarism_score,
             keyword_similarity=result['keyword_similarity'],
             upload_count=upload_count + 1,
             verdict=get_verdict(result['score'])
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -231,7 +278,7 @@ async def get_participant_scores(participant_id: str):
     """Get all scores for participant"""
     try:
         scores_df = db.get_participant_scores(participant_id)
-        
+
         # Handle empty dataframe
         if scores_df is None or scores_df.empty:
             return {
@@ -240,7 +287,7 @@ async def get_participant_scores(participant_id: str):
                 "average_score": 0,
                 "total_submissions": 0
             }
-        
+
         # Convert to dict
         scores_list = scores_df.to_dict('records')
         
@@ -248,7 +295,7 @@ async def get_participant_scores(participant_id: str):
         for score in scores_list:
             if 'created_at' in score and score['created_at']:
                 score['created_at'] = str(score['created_at'])
-        
+
         return {
             "scores": scores_list,
             "best_score": float(scores_df['score'].max()),
@@ -295,7 +342,7 @@ async def get_stats():
     """Get competition statistics"""
     try:
         data = db.get_statistics()
-        
+
         if not data:
             return {
                 "total_participants": 0,
@@ -306,7 +353,7 @@ async def get_stats():
                 "high_scorers": 0,
                 "score_distribution": []
             }
-        
+
         return data
     except Exception as e:
         logger.error(f"Stats error: {e}")
