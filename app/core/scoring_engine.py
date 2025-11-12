@@ -1,6 +1,7 @@
 """
 ATS Scoring Engine - CloudAlly Systems Fixed JD
-FIXED: Uses hardcoded CloudAlly skill lists (not dynamic extraction)
+FIXED: Uses hardcoded CloudAlly skill lists with proper deduplication
+Version: 2.0 - FINAL
 """
 import re
 from typing import Dict, List, Tuple
@@ -11,48 +12,40 @@ import logging
 logger = logging.getLogger(__name__)
 
 # ============================================================
-# FIXED CLOUDALLY SYSTEMS SKILL LISTS (DO NOT MODIFY)
+# FIXED CLOUDALLY SYSTEMS SKILL LISTS - CLEANED (NO DUPLICATES)
 # ============================================================
 
-# Required Skills (14) - Penalty: -2 per missing skill
+# Required Skills (14 UNIQUE) - Penalty: -2 per missing skill
 REQUIRED_SKILLS = [
     'python',
-    'node.js',
-    'nodejs',
+    'node',              # Matches: node.js, nodejs, node
     'typescript',
     'fastapi',
     'flask',
-    'postgresql',
-    'postgres',
-    'rest api',
-    'restapi',
+    'postgresql',        # Matches: postgresql, postgres
+    'rest api',          # Matches: rest api, restapi, restful api
     'docker',
     'git',
-    'ci/cd',
-    'cicd',
+    'ci/cd',             # Matches: ci/cd, cicd
     'aws',
     'azure',
-    'microservices',
-    'microservice',
-    'asynchronous',
-    'async',
-    'asynchronous programming',
+    'microservices',     # Matches: microservices, microservice
+    'async',             # Matches: async, asynchronous, asynchronous programming
 ]
 
-# Preferred Skills (8) - Penalty: -1 per missing skill
+# Preferred Skills (8 UNIQUE) - Penalty: -1 per missing skill
 PREFERRED_SKILLS = [
-    'machine learning',
-    'ml',
+    'machine learning',  # Matches: machine learning, ml
     'mlops',
-    'react',
-    'reactjs',
-    'next.js',
-    'nextjs',
+    'react',             # Matches: react, reactjs
+    'next',              # Matches: next.js, nextjs, next
     'agile',
     'scrum',
     'grafana',
     'prometheus',
 ]
+
+# Total: 22 unique skills (14 required + 8 preferred)
 
 # Fixed JD for CloudAlly Systems
 CLOUDALLY_JD = """
@@ -77,6 +70,44 @@ workloads collaborate interdisciplinary team backend cloud AI engineers opportun
 automation cloud infrastructure production-scale systems supportive environment mentorship upskilling
 sessions quarterly project showcases
 """
+
+
+def skill_matches(resume_skill: str, jd_skill: str) -> bool:
+    """
+    Check if resume skill matches JD skill (flexible matching with aliases)
+    """
+    resume_lower = resume_skill.lower()
+    jd_lower = jd_skill.lower()
+    
+    # Exact match
+    if resume_lower == jd_lower:
+        return True
+    
+    # Skill aliases for flexible matching
+    skill_aliases = {
+        'node': ['node.js', 'nodejs', 'node js', 'node'],
+        'postgresql': ['postgres', 'postgresql', 'psql'],
+        'rest api': ['restapi', 'rest api', 'restful api', 'rest', 'restful'],
+        'ci/cd': ['cicd', 'ci/cd', 'ci cd', 'ci-cd'],
+        'microservices': ['microservice', 'microservices', 'micro services', 'micro-services'],
+        'async': ['asynchronous', 'async', 'asynchronous programming', 'asyncio'],
+        'machine learning': ['ml', 'machine learning', 'machine-learning'],
+        'react': ['reactjs', 'react', 'react.js'],
+        'next': ['nextjs', 'next.js', 'next js', 'next'],
+    }
+    
+    # Check if JD skill has aliases
+    for base_skill, aliases in skill_aliases.items():
+        if jd_lower == base_skill or jd_lower in aliases:
+            # Check if resume skill matches any alias
+            if any(alias in resume_lower or resume_lower in alias for alias in aliases):
+                return True
+    
+    # Substring match (fallback)
+    if jd_lower in resume_lower or resume_lower in jd_lower:
+        return True
+    
+    return False
 
 
 def calculate_keyword_relevance(resume_text: str, job_description: str) -> Dict:
@@ -229,8 +260,8 @@ def calculate_ats_score(resume_text: str, job_description: str, parsed_resume: D
                        jd_education: str = "", required_skills: List[str] = None,
                        preferred_skills: List[str] = None) -> Dict:
     """
-    CloudAlly Systems ATS Scoring - FIXED
-    Uses hardcoded skill lists (not dynamic extraction)
+    CloudAlly Systems ATS Scoring - FIXED v2.0
+    Uses hardcoded skill lists (22 unique skills) with flexible matching
     """
     
     # Use CloudAlly fixed skills (ignore parameters)
@@ -246,44 +277,58 @@ def calculate_ats_score(resume_text: str, job_description: str, parsed_resume: D
     resume_skills_lower = [s.lower() for s in resume_skills]
     
     # ========== SKILLS MATCH (30 points) ==========
-    all_jd_skills = list(set(req_skills + pref_skills))  # Remove duplicates
+    all_jd_skills = req_skills + pref_skills  # 22 unique skills
     matched_skills = []
+    matched_jd_skills = set()
     
+    # Match each resume skill against all JD skills using flexible matching
     for skill in resume_skills:
-        skill_lower = skill.lower()
-        if any(skill_lower == jd_skill or jd_skill in skill_lower or skill_lower in jd_skill 
-               for jd_skill in all_jd_skills):
-            matched_skills.append(skill)
+        for jd_skill in all_jd_skills:
+            if skill_matches(skill, jd_skill):
+                if jd_skill not in matched_jd_skills:
+                    matched_skills.append(skill)
+                    matched_jd_skills.add(jd_skill)
+                break
     
     if all_jd_skills:
-        skills_score = (len(matched_skills) / len(all_jd_skills)) * 30
+        skills_score = (len(matched_jd_skills) / len(all_jd_skills)) * 30
     else:
         skills_score = 0.0
     
     score += skills_score
     breakdown['skills_match'] = round(skills_score, 2)
-    feedback.append(f"Matched {len(matched_skills)}/{len(all_jd_skills)} skills")
+    feedback.append(f"Matched {len(matched_jd_skills)}/{len(all_jd_skills)} skills")
     
     # Check missing required (-2 each)
-    missing_required = [
-        skill for skill in req_skills
-        if not any(skill in rs_lower or rs_lower in skill for rs_lower in resume_skills_lower)
-    ]
+    missing_required = []
+    for req_skill in req_skills:
+        found = False
+        for resume_skill in resume_skills:
+            if skill_matches(resume_skill, req_skill):
+                found = True
+                break
+        if not found:
+            missing_required.append(req_skill)
     
     if missing_required:
-        penalty = len(set(missing_required)) * 2  # Remove duplicates
-        penalties.append(f"Missing required: {', '.join(list(set(missing_required))[:5])} (-{penalty})")
+        penalty = len(missing_required) * 2
+        penalties.append(f"Missing required: {', '.join(missing_required[:5])} (-{penalty})")
         score -= penalty
     
     # Check missing preferred (-1 each)
-    missing_preferred = [
-        skill for skill in pref_skills
-        if not any(skill in rs_lower or rs_lower in skill for rs_lower in resume_skills_lower)
-    ]
+    missing_preferred = []
+    for pref_skill in pref_skills:
+        found = False
+        for resume_skill in resume_skills:
+            if skill_matches(resume_skill, pref_skill):
+                found = True
+                break
+        if not found:
+            missing_preferred.append(pref_skill)
     
     if missing_preferred:
-        penalty = len(set(missing_preferred)) * 1  # Remove duplicates
-        penalties.append(f"Missing preferred: {', '.join(list(set(missing_preferred))[:5])} (-{penalty})")
+        penalty = len(missing_preferred) * 1
+        penalties.append(f"Missing preferred: {', '.join(missing_preferred[:5])} (-{penalty})")
         score -= penalty
     
     # ========== EDUCATION (20 points) ==========
@@ -293,9 +338,9 @@ def calculate_ats_score(resume_text: str, job_description: str, parsed_resume: D
     penalties.extend(edu_penalties)
     
     if education_score >= 15:
-        feedback.append("Education: Excellent")
+        feedback.append("Education: Excellent match")
     elif education_score >= 10:
-        feedback.append("Education: Good")
+        feedback.append("Education: Good match")
     
     # ========== EXPERIENCE (20 points) ==========
     exp_years = parsed_resume.get('experience_years', 0)
