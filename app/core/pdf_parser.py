@@ -48,7 +48,7 @@ def validate_pdf(content: bytes, filename: str, max_size_bytes: int) -> tuple[bo
         return False, "File must be a PDF"
     
     if len(content) > max_size_bytes:
-        max_mb = max_size_bytes / (1024 * 1024)
+        max_mb = max_size_bytes / (1024 * 1024 * 20)
         return False, f"File size exceeds {max_mb}MB limit"
     
     return True, "Valid"
