@@ -20,7 +20,7 @@ app = FastAPI(
 # CORS - UPDATED FOR FILE UPLOADS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://10.42.16.82:3000"],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
