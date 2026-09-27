@@ -26,7 +26,7 @@ class Settings:
     }
     
     # ADDED THE LIVE FRONTEND EXACT ORIGIN HERE
-    CORS_ORIGINS = ["http://localhost:3000", "http://localhost:5173", "https://perfect-cv.mlsctiet.com", "*"]
+    CORS_ORIGINS = ["http://localhost:3000", "http://localhost:5173", "https://perfect-cv.mlsctiet.com"]
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
     
     ENABLE_API_KEY_AUTH = os.getenv("ENABLE_API_KEY_AUTH", "true").lower() == "true"
