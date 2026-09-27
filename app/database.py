@@ -1,7 +1,8 @@
 """Database operations"""
 import logging
 from typing import Optional, List, Dict
-from supabase import create_client, Client
+import psycopg2
+from psycopg2.extras import RealDictCursor
 import pandas as pd
 from app.config import settings
 
@@ -9,58 +10,85 @@ logger = logging.getLogger(__name__)
 
 class Database:
     def __init__(self):
-        self.client: Optional[Client] = None
+        self.conn = None
         self.connect()
     
     def connect(self):
         try:
-            if settings.SUPABASE_URL and settings.SUPABASE_KEY:
-                self.client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
-                self.client.table('participants').select("count", count='exact').limit(1).execute()
-                logger.info("✅ Database connected")
+            if settings.DATABASE_URL:
+                self.conn = psycopg2.connect(settings.DATABASE_URL, cursor_factory=RealDictCursor)
+                self.conn.autocommit = True
+                logger.info("✅ Database connected via local PostgreSQL")
             else:
-                logger.error("❌ Supabase credentials not configured")
+                logger.error("❌ DATABASE_URL not configured")
         except Exception as e:
             logger.error(f"❌ Database connection failed: {e}")
-            self.client = None
+            self.conn = None
+            
+    def _execute(self, query, params=None, fetch=None):
+        if not self.conn or self.conn.closed:
+            self.connect()
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute(query, params)
+                if fetch == 'all':
+                    return cur.fetchall()
+                elif fetch == 'one':
+                    return cur.fetchone()
+                return None
+        except Exception as e:
+            logger.error(f"Query error: {e}")
+            return None
     
     @property
     def is_connected(self):
-        return self.client is not None
+        return self.conn is not None and not self.conn.closed
     
     def register_participant(self, data: Dict) -> str:
-        self.client.table('participants').insert(data).execute()
-        return data['id']
+        columns = ', '.join(data.keys())
+        placeholders = ', '.join(['%s'] * len(data))
+        query = f"INSERT INTO participants ({columns}) VALUES ({placeholders}) RETURNING id"
+        res = self._execute(query, tuple(data.values()), fetch='one')
+        return str(res['id']) if res else data['id']
     
     def get_participant_by_email(self, email: str) -> Optional[Dict]:
-        response = self.client.table('participants').select('*').eq('email', email).execute()
-        return response.data[0] if response.data else None
+        query = "SELECT * FROM participants WHERE email = %s"
+        return self._execute(query, (email,), fetch='one')
     
     def save_application(self, data: Dict):
-        self.client.table('applications').insert(data).execute()
+        columns = ', '.join(data.keys())
+        placeholders = ', '.join(['%s'] * len(data))
+        query = f"INSERT INTO applications ({columns}) VALUES ({placeholders})"
+        self._execute(query, tuple(data.values()))
     
     def get_upload_count(self, participant_id: str) -> int:
-        response = self.client.table('applications').select('id', count='exact').eq('participant_id', participant_id).execute()
-        return response.count if response.count else 0
+        query = "SELECT COUNT(id) as count FROM applications WHERE participant_id = %s"
+        res = self._execute(query, (participant_id,), fetch='one')
+        return res['count'] if res else 0
     
     def get_participant_scores(self, participant_id: str):
-        response = self.client.table('applications').select('*').eq('participant_id', participant_id).order('created_at', desc=True).execute()
-        return pd.DataFrame(response.data) if response.data else pd.DataFrame()
+        query = "SELECT * FROM applications WHERE participant_id = %s ORDER BY created_at DESC"
+        data = self._execute(query, (participant_id,), fetch='all')
+        return pd.DataFrame(data) if data else pd.DataFrame()
     
     def get_leaderboard(self, limit: int = 10):
-        response = self.client.table('leaderboard').select('*').limit(limit).execute()
-        return response.data if response.data else []
+        query = "SELECT * FROM leaderboard LIMIT %s"
+        data = self._execute(query, (limit,), fetch='all')
+        return data if data else []
     
     def get_statistics(self):
-        apps_response = self.client.table('applications').select('score, experience_years').execute()
-        participants_response = self.client.table('participants').select('id', count='exact').execute()
+        apps_query = "SELECT score, experience_years FROM applications"
+        apps_data = self._execute(apps_query, fetch='all')
         
-        if not apps_response.data:
+        part_query = "SELECT COUNT(id) as count FROM participants"
+        part_res = self._execute(part_query, fetch='one')
+        
+        if not apps_data:
             return None
-        
-        df = pd.DataFrame(apps_response.data)
+            
+        df = pd.DataFrame(apps_data)
         return {
-            'total_participants': participants_response.count or 0,
+            'total_participants': part_res['count'] if part_res else 0,
             'total_submissions': len(df),
             'avg_score': float(df['score'].mean()),
             'median_score': float(df['score'].median()),
@@ -74,11 +102,12 @@ class Database:
         }
     
     def save_to_corpus(self, participant_id: str, resume_text: str):
-        data = {'participant_id': participant_id, 'resume_text': resume_text}
-        self.client.table('resume_corpus').insert(data).execute()
+        query = "INSERT INTO resume_corpus (participant_id, resume_text) VALUES (%s, %s)"
+        self._execute(query, (participant_id, resume_text))
     
     def get_reference_corpus(self, limit: int = 100):
-        response = self.client.table('resume_corpus').select('resume_text').limit(limit).execute()
-        return [item['resume_text'] for item in response.data] if response.data else []
+        query = "SELECT resume_text FROM resume_corpus LIMIT %s"
+        data = self._execute(query, (limit,), fetch='all')
+        return [item['resume_text'] for item in data] if data else []
 
 db = Database()
